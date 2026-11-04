@@ -10,17 +10,23 @@ export interface AuthenticatedRequest extends Request {
 
 const users = new UserRepository();
 
-/**
- * Verificação REAL: aqui usamos jwt.verify, não jwt.decode.
- * É a diferença central em relação ao Lawin, Better-Reload e V2.
- */
+/** Aceita "bearer eg1~xxx", "Bearer eg1~xxx", "bearer xxx" — case-insensitive */
+const extractToken = (header?: string): string | null => {
+  if (!header) return null;
+  const m = /^bearer\s+(.+)$/i.exec(header.trim());
+  if (!m) return null;
+  return m[1].replace(/^eg1~/i, "").trim();
+};
+
 export const requireAuth = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const header = req.headers.authorization;
-  if (!header || !header.toLowerCase().startsWith("bearer eg1~")) {
+  const token = extractToken(req.headers.authorization);
+
+  if (!token) {
+    console.log(`[auth] SEM TOKEN | ${req.method} ${req.originalUrl}`);
     return epicError(
       res,
       401,
@@ -29,8 +35,6 @@ export const requireAuth = async (
       1032
     );
   }
-
-  const token = header.replace(/^bearer eg1~/i, "");
 
   try {
     const payload = jwt.verify(token, env.jwtSecret) as { sub: string; dn: string };
@@ -48,8 +52,12 @@ export const requireAuth = async (
     }
 
     req.account = { accountId: user.accountId, displayName: user.displayName };
+    console.log(`[auth] OK | ${req.method} ${req.originalUrl} | acc=${user.accountId}`);
     next();
-  } catch {
+  } catch (e) {
+    console.log(
+      `[auth] FALHOU | ${req.method} ${req.originalUrl} | ${(e as Error).message}`
+    );
     return epicError(
       res,
       401,

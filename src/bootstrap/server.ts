@@ -66,6 +66,10 @@ const bootstrap = async (): Promise<void> => {
   });
 };
 
+process.on("uncaughtException", (err) => {
+  console.error("[fatal] exceção não capturada:", err.message);
+});
+
 bootstrap().catch((err) => {
   console.error("[fatal]", err);
   process.exit(1);
