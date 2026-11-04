@@ -1,10 +1,6 @@
-import { Profile, emptyProfile, bumpRevision } from "../../domain/profile/Profile";
+import { Profile, emptyProfile } from "../../domain/profile/Profile";
 import { ProfileModel } from "./schemas/profile";
 
-/**
- * Fonte de verdade única: o MongoDB.
- * Nada de require() cacheando objeto nem variável de módulo com estado.
- */
 export class ProfileRepository {
   async load(accountId: string, profileId: string): Promise<Profile> {
     const doc = await ProfileModel.findOne({ accountId, profileId }).lean();
@@ -21,24 +17,45 @@ export class ProfileRepository {
   }
 
   /**
-   * Update condicional por revisão (CAS).
-   * Se a revisão esperada não bater, retorna null — o chamador decide
-   * se re-tenta ou devolve conflito. Isso impede lost update em compras.
+   * Gravação incondicional. Usada para semear um perfil novo (rev 0 → 1).
+   * Não há revisão anterior para comparar, então não é CAS.
+   */
+  async save(profile: Profile): Promise<Profile | null> {
+    const result = await ProfileModel.findOneAndUpdate(
+      { accountId: profile.accountId, profileId: profile.profileId },
+      {
+        $set: {
+          data: profile as unknown as Record<string, unknown>,
+          rev: profile.rvn,
+        },
+      },
+      { new: true, upsert: true }
+    ).lean();
+
+    if (!result) return null;
+    return result.data as unknown as Profile;
+  }
+
+  /**
+   * CAS por revisão. NÃO incrementa rvn — quem incrementa é o comando.
+   * Se a revisão esperada não bater, retorna null.
    */
   async saveIfRevision(
     profile: Profile,
     expectedRevision: number
   ): Promise<Profile | null> {
-    const next: Profile = { ...profile };
-    bumpRevision(next);
-
     const result = await ProfileModel.findOneAndUpdate(
       {
-        accountId: next.accountId,
-        profileId: next.profileId,
+        accountId: profile.accountId,
+        profileId: profile.profileId,
         rev: expectedRevision,
       },
-      { $set: { data: next as unknown as Record<string, unknown>, rev: next.rvn } },
+      {
+        $set: {
+          data: profile as unknown as Record<string, unknown>,
+          rev: profile.rvn,
+        },
+      },
       { new: true }
     ).lean();
 

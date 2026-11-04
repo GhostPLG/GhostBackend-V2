@@ -11,4 +11,4 @@ Thumbs.db
 .vscode/
 .idea/
 coverage/
-*.tsbuildinfo
+*.tsbuildinfo*.BACKUP.json
